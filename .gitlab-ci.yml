@@ -1,0 +1,117 @@
+image: docker:dind
+stages:
+  - sops_decrypt
+  - terraform_init_vm
+  - ansible_deployment
+  - terraform_destroy_vm
+
+include: variables.yaml
+
+.replace_vars:
+  script:
+    - |-
+        #!/bin/bash
+        cp variables.yaml env.yaml
+        sed -i "s/\"//g" env.yaml
+        VARIABLES_NUM=`cat env.yaml|grep -v variables|wc|awk -F " " '{ print $1}'`
+        ((VARIABLES_NUM++))
+        sed  -i "s/: /=/g" env.yaml
+
+        for((z=2; z<=$VARIABLES_NUM; z++))
+        do
+           dynamic_var=`sed -n ${z}p ./env.yaml|awk -F "=" '{ print $1}'`
+           dynamic_var_value=`sed -n ${z}p ./env.yaml|awk -F "=" '{ print $2}'`
+           sed -i "s|`echo $dynamic_var`|$dynamic_var_value|g" ./ansible/play.yml ./terraform/terraform.tfvars ./terraform/main.tf
+        done
+
+.ssh_moves:
+  script:
+    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y ) || ( apk add --update openssh )'
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - eval $(ssh-agent -s)
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - ssh-add <(echo "$PRIV_SSH")
+    - echo "$PRIV_SSH" > ~/.ssh/id_rsa && echo "$PUB_SSH" > ~/.ssh/id_rsa.pub
+    - cp files/config ~/.ssh/config
+    - chmod 644 ~/.ssh/config
+
+
+sops_decrypt:
+  image:
+    name: mozilla/sops:latest
+    entrypoint: [""]
+  stage: sops_decrypt
+  variables:
+    GNUPGHOME: /tmp/gpg
+  script:
+    - ls -trlash
+    - echo "Decrypting secrets..."
+    - sops --v
+    - mkdir ${GNUPGHOME} && echo ${GPG_KEY_B64} | base64 -id > ${GNUPGHOME}/secring.gpg
+    - sops -pgp ${PGKEY} --output-type json -d creds/key.json.enc > key.json
+    - sops -pgp ${PGKEY} -d creds/backend.conf.enc > backend.conf
+  artifacts:
+    paths:
+    - ./key.json
+    - ./backend.conf
+    expire_in: 1h
+
+
+terraform_init_vm:
+  image:
+    name:  hashicorp/terraform:latest
+    entrypoint: [""]
+  stage: terraform_init_vm
+  when: manual
+  script:
+    - !reference ['.replace_vars', 'script']
+    - !reference ['.ssh_moves', 'script']
+    - cd terraform/
+    - mv ../key.json ../backend.conf .
+    - terraform init -backend-config=./backend.conf
+    - sleep 30
+    - terraform apply -auto-approve
+    - terraform output -raw yandex_vpc_security_group_vm_1 > ../sec_group_id.env
+  artifacts:
+    paths:
+    - ./sec_group_id.env
+    expire_in: 1h
+
+ansible_deployment:
+  image:
+    name: ubuntu:latest
+    entrypoint: [""]
+  stage: ansible_deployment
+  when: manual
+  dependencies:
+    - terraform_init_vm
+  script:
+    - !reference ['.replace_vars', 'script']
+    - !reference ['.ssh_moves', 'script']
+    - export YANDEX_SECURITY_GROUPS=`cat ./sec_group_id.env`
+    - sed -i "s|.*yandex-security-groups=.*|             \"yandex-security-groups=$YANDEX_SECURITY_GROUPS\",|g" ./ansible/play.yml
+    - cat ansible/play.yml
+    - ssh-keyscan $RUNNER_IP
+    - apt-get update && apt-get install openssh-client ansible -y
+    - export ANSIBLE_HOST_KEY_CHECKING=False
+    - cd ansible/
+    - echo ${RUNNER_IP} >> hosts
+    - ansible-playbook play.yml  -i ./hosts
+
+terraform_destroy_vm:
+  image:
+    name:  hashicorp/terraform:latest
+    entrypoint: [""]
+  stage: terraform_destroy_vm
+  when: manual
+  script:
+    - !reference ['.replace_vars', 'script']
+    - !reference ['.ssh_moves', 'script']
+    - cd terraform/
+    - mv ../key.json ../backend.conf .
+    - terraform init -backend-config=./backend.conf
+    - echo I WILL DESTROY ALL RESOURCES IN THAT CLOUD FOLDER
+    - echo but before we destroy everything you have a minute to change your mind
+    - sleep 30
+    - terraform destroy -auto-approve

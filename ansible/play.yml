@@ -1,0 +1,45 @@
+---
+- name: Runner
+  hosts: runner
+  remote_user: ubuntu
+  become: yes
+  roles:
+    - roles/docker-machine
+    - roles/runner
+    - roles/node_exporter
+  vars:
+   no_log: false
+   gitlab_runner_registration_token: 'RUNNER_TOKEN'
+   gitlab_runner_coordinator_url: 'GITLAB_URL'
+   gitlab_runner_runners:
+     - name: 'RUNNER_NAME'
+       state: present
+       token: 'RUNNER_TOKEN'
+       executor: 'docker+machine'
+       concurrent_specific: 'CONCURRENT'
+       docker_image: 'DEFAULT_IMAGE'
+       tags:
+        - RUNNER_TAG
+       extra_configs:
+         runners.machine:
+           IdleCount: IDLECOUNT
+           IdleTime: IDLETIME
+           MaxBuilds: MAXBUILDS
+           MachineDriver: 'yandex'
+           MachineName: 'autoscaling-yc-%s'
+           MachineOptions: [
+             "yandex-sa-key-file=YANDEX_SA_KEY_FILE",
+             "yandex-cloud-id=YANDEX_CLOUD_ID",
+             "yandex-cores=YANDEX_CORES",
+             "yandex-memory=YANDEX_MEMORY",
+             "yandex-disk-size=YANDEX_DISK_SIZE",
+             "yandex-core-fraction=YANDEX_CORE_FRACTION",
+             "yandex-disk-type=YANDEX_DISK_TYPE",
+             "yandex-folder-id=YANDEX_FOLDER_ID",
+             "yandex-image-id=YANDEX_IMAGE_ID",
+             "yandex-security-groups=YANDEX_SECURITY_GROUPS",
+             "yandex-subnet-id=YANDEX_SUBNET_ID",
+             "yandex-use-internal-ip",
+             "yandex-zone=YANDEX_ZONE"
+           ]
+   node_exporter_version: "1.3.1"

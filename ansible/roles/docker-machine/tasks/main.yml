@@ -1,0 +1,59 @@
+---
+- name: install packages
+  apt:
+    pkg:
+      - docker.io
+      - git
+      - golang-go
+      - git
+      - htop
+      - lnav
+    state: latest
+    update_cache: true
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Creates directory for driver yandex
+  file:
+    path: /home/gitlab-runner/go/bin
+    state: directory
+    owner: root
+    group: root
+    mode: 0775
+
+- name: mv /home/ubuntu/key.json
+  command: mv /home/ubuntu/key.json /home/gitlab-runner/key.json
+  ignore_errors: yes
+
+- name: Change permission on /home/gitlab-runner/key.json file
+  file:
+    path: /home/gitlab-runner/key.json
+    state: file
+    owner: root
+    group: root
+    mode: 0440
+  ignore_errors: yes
+
+- name: Download docker-machine
+  get_url:
+    url: https://gitlab-docker-machine-downloads.s3.amazonaws.com/v0.16.2-gitlab.11/docker-machine-Linux-x86_64
+    dest: /usr/local/bin/docker-machine
+    mode: '0770'
+
+- name: Download yandex driver for docker-machine
+  get_url:
+    url: https://github.com/yandex-cloud/docker-machine-driver-yandex/releases/download/v0.1.35/docker-machine-driver-yandex_0.1.35_linux_amd64.tar.gz
+    dest: /tmp/docker-machine-driver-yandex_0.1.35_linux_amd64.tar.gz
+    mode: '0770'
+
+- name: Extract docker-machine-driver-yandex_0.1.35_linux_amd64.tar.gz into /root/go/bin
+  unarchive:
+    src: /tmp/docker-machine-driver-yandex_0.1.35_linux_amd64.tar.gz
+    dest: /home/gitlab-runner/go/bin
+    remote_src: yes
+
+- name: Change file ownership, group and permissions
+  ansible.builtin.file:
+    path: /home/gitlab-runner/go/bin/docker-machine-driver-yandex
+    owner: root
+    group: root
+    mode: '0777'

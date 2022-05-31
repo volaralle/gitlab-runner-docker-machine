@@ -1,0 +1,12 @@
+cloud_id       = "VM_CLOUD_ID"
+folder_id      = "VM_FOLDER_ID"
+zone           = "ru-central1-a"
+vm_yc_name     = "RUNNER_NAME"
+image_id       = "VM_IMAGE_ID"
+size_vm        =  VM_STORAGE
+cores          =  VM_CORES
+ram            =  VM_RAM
+network_id     = "VM_NETWORK_ID"
+subnet_id      = "VM_SUBNET_ID"
+ip_address     = "RUNNER_IP"
+sg_name        = "RUNNER_NAME security group"
